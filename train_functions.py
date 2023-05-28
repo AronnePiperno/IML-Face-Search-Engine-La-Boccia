@@ -1,10 +1,11 @@
-from datetime import time
+import time
+from datetime import datetime
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import os
-
+import gc
 class adjust_lr:
     """
     create a class instance;
@@ -23,6 +24,7 @@ class adjust_lr:
 def train(epochs, net, device, trainloader, testloader, classes, scheduler, lr, inner_param, sigma, hlen, eta, save):
 
     print('==> Preparing training data..')
+    net = net.to(device)
 
     criterion = DualClasswiseLoss(num_classes=classes, inner_param=inner_param, sigma=sigma, feat_dim=hlen, use_gpu=True)
 
@@ -39,13 +41,18 @@ def train(epochs, net, device, trainloader, testloader, classes, scheduler, lr, 
         print('==> Epoch: %d' % (epoch + 1))
         net.train()
         dcdh_loss = AverageMeter()
-        scheduler.adjust(optimizer, epoch)
+        scheduler.adjust(optimizer, epoch, lr)
         # epoch_start = time.time()
         for batch_id, (imgs, labels) in enumerate(trainloader):
             imgs, labels = imgs.to(device), labels.to(device)
             optimizer.zero_grad()
-            hash_bits = net(imgs)
-            loss_dual = criterion(hash_bits, labels)
+
+            hash_bits = net(imgs).detach().cpu().numpy()
+            print(hash_bits.shape)
+            print(labels.shape)
+            print(imgs.shape)
+            print(device)
+            loss_dual = criterion(torch.Tensor(hash_bits).to(device), labels)
             hash_binary = torch.sign(hash_bits)
             batchY = EncodingOnehot(labels, classes).cuda()
             W = torch.pinverse(batchY.t() @ batchY) @ batchY.t() @ hash_binary           # Update W
@@ -58,6 +65,12 @@ def train(epochs, net, device, trainloader, testloader, classes, scheduler, lr, 
             dcdh_loss.update(loss_h.item(), len(imgs))
             loss_h.backward()
             optimizer.step()
+
+            #Garbage collection
+            gc.collect()
+            torch.cuda.empty_cache()
+            del imgs
+            del labels
 
         print("[epoch: %d]\t[hashing loss: %.3f ]" % (epoch+1, dcdh_loss.avg))
 
