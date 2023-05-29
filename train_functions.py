@@ -38,6 +38,8 @@ def train(epochs, net, device, trainloader, testloader, classes, scheduler, lr, 
 
     since = time.time()
     for epoch in range(epochs):
+
+
         print('==> Epoch: %d' % (epoch + 1))
         net.train()
         dcdh_loss = AverageMeter()
@@ -48,11 +50,12 @@ def train(epochs, net, device, trainloader, testloader, classes, scheduler, lr, 
             optimizer.zero_grad()
 
             hash_bits = net(imgs).detach().cpu().numpy()
+            hash_bits = torch.Tensor(hash_bits).to(device)
             print(hash_bits.shape)
             print(labels.shape)
             print(imgs.shape)
             print(device)
-            loss_dual = criterion(torch.Tensor(hash_bits).to(device), labels)
+            loss_dual = criterion(hash_bits, labels)
             hash_binary = torch.sign(hash_bits)
             batchY = EncodingOnehot(labels, classes).cuda()
             W = torch.pinverse(batchY.t() @ batchY) @ batchY.t() @ hash_binary           # Update W
@@ -123,6 +126,7 @@ class DualClasswiseLoss(nn.Module):
         batch_size = x.size(0)
         distmat = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(batch_size, self.num_classes) + \
                   torch.pow(self.centers, 2).sum(dim=1, keepdim=True).expand(self.num_classes, batch_size).t()
+
         distmat.addmm_(x, self.centers.t(), beta=1, alpha=-2)
         dist_div = torch.exp(-0.5*self.sigma*distmat)/(torch.exp(-0.5*self.sigma*distmat).sum(dim=1, keepdim=True) + 1e-6)
         classes = torch.arange(self.num_classes).long()
